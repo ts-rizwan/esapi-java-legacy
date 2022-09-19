@@ -15,6 +15,7 @@
  */
 package org.owasp.esapi.waf.internal;
 
+import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ public class InterceptingHTTPServletResponse extends HttpServletResponseWrapper 
 
     private InterceptingPrintWriter ipw;
     private InterceptingServletOutputStream isos;
+    private final CharArrayWriter writer;
     private String contentType;
 
     private List<AddSecureFlagRule> addSecureFlagRules = null;
@@ -52,6 +54,7 @@ public class InterceptingHTTPServletResponse extends HttpServletResponseWrapper 
     public InterceptingHTTPServletResponse(HttpServletResponse response, boolean buffering, List<Rule> cookieRules) throws IOException {
 
         super(response);
+        writer = new CharArrayWriter();
 
         this.contentType = response.getContentType();
 
@@ -89,13 +92,12 @@ public class InterceptingHTTPServletResponse extends HttpServletResponseWrapper 
         return isos;
     }
 
-    public PrintWriter getWriter() throws IOException {
-        if ( alreadyCalledOutputStream == true ) {
-            throw new IllegalStateException();
-        }
-        alreadyCalledWriter = true;
+    public PrintWriter getWriter() {
+        return new PrintWriter(writer);
+    }
 
-        return ipw;
+    public String toString() {
+        return writer.toString();
     }
 
     public String getContentType() {

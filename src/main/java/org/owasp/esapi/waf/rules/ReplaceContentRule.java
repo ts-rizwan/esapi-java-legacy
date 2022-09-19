@@ -15,19 +15,17 @@
  */
 package org.owasp.esapi.waf.rules;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
 import org.owasp.esapi.Logger;
 import org.owasp.esapi.waf.actions.Action;
 import org.owasp.esapi.waf.actions.DoNothingAction;
-import org.owasp.esapi.waf.configuration.AppGuardianConfiguration;
 import org.owasp.esapi.waf.internal.InterceptingHTTPServletResponse;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.CharArrayWriter;
+import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * This is the Rule subclass executed for &lt;dynamic-insertion&gt; rules.
@@ -75,36 +73,23 @@ public class ReplaceContentRule extends Rule {
             }
         }
 
-        byte[] bytes = null;
-
-        try {
-            bytes = response.getInterceptingServletOutputStream().getResponseBytes();
-        } catch (IOException ioe) {
-            log(request,"Error matching pattern '" + pattern.pattern() + "', IOException encountered (possibly too large?): " + ioe.getMessage() + " (in response to URL: '" + request.getRequestURL() + "')");
-            return new DoNothingAction(); // yes this is a fail open!
-        }
-
+        String s = response.toString();
+        Matcher m = pattern.matcher(s);
+        String canary = m.replaceAll(replacement);
 
         try {
 
-            String s = new String(bytes,response.getCharacterEncoding());
-
-            Matcher m = pattern.matcher(s);
-            String canary = m.replaceAll(replacement);
-
-            try {
-
-                if ( ! s.equals(canary) ) {
-                    response.getInterceptingServletOutputStream().setResponseBytes(canary.getBytes(response.getCharacterEncoding()));
-                    logger.debug(Logger.SECURITY_SUCCESS, "Successfully replaced pattern '" + pattern.pattern() + "' on response to URL '" + request.getRequestURL() + "'");
-                }
-
-            } catch (IOException ioe) {
-                logger.error(Logger.SECURITY_FAILURE, "Failed to replace pattern '" + pattern.pattern() + "' on response to URL '" + request.getRequestURL() + "' due to [" + ioe.getMessage() + "]");
+            if ( ! s.equals(canary) ) {
+                CharArrayWriter charWriter = new CharArrayWriter();
+                charWriter.write(canary);
+                String alteredContent = charWriter.toString();
+                response.setContentLength(alteredContent.length());
+                response.getOutputStream().write(alteredContent.getBytes());
+                logger.debug(Logger.SECURITY_SUCCESS, "Successfully replaced pattern '" + pattern.pattern() + "' on response to URL '" + request.getRequestURL() + "'");
             }
 
-        } catch(UnsupportedEncodingException uee) {
-            logger.error(Logger.SECURITY_FAILURE, "Failed to replace pattern '" + pattern.pattern() + "' on response to URL '" + request.getRequestURL() + "' due to [" + uee.getMessage() + "]");
+        } catch (IOException ioe) {
+            logger.error(Logger.SECURITY_FAILURE, "Failed to replace pattern '" + pattern.pattern() + "' on response to URL '" + request.getRequestURL() + "' due to [" + ioe.getMessage() + "]");
         }
 
         return new DoNothingAction();
